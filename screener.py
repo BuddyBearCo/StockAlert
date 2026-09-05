@@ -42,10 +42,8 @@ def main():
         tickers = table[0]['Symbol'].str.replace('.', '-').tolist()
     except Exception as e:
         print(f"Warning: Could not fetch from Wikipedia ({e}), using backup list.")
-        # รายชื่อหุ้นสำรองกรณี Wikipedia บล็อก
         tickers = ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'BRK-B', 'LLY', 'AVGO', 'JPM', 'XOM', 'TSLA', 'UNH', 'V', 'PG', 'MA', 'HD', 'COST', 'JNJ', 'NFLX']
 
-    # จำกัดจำนวนหุ้นเพื่อทดสอบความรวดเร็ว
     tickers = tickers[:100] 
     
     print(f"Downloading data for {len(tickers)} tickers...")
@@ -55,7 +53,6 @@ def main():
     
     for ticker in tickers:
         try:
-            # ตรวจสอบรูปแบบข้อมูลของ yfinance
             if len(tickers) == 1:
                 df = data.copy()
             else:
@@ -65,7 +62,6 @@ def main():
             df = df.dropna()
             if len(df) < 200: continue
             
-            # คำนวณ Indicators
             df.ta.ema(length=50, append=True)
             df.ta.ema(length=200, append=True)
             df.ta.sma(close="Volume", length=50, append=True)
@@ -74,7 +70,6 @@ def main():
             last = df.iloc[-1]
             prev20 = df.iloc[-21]
             
-            # เช็คเงื่อนไข Strict Mode
             cond1 = last['Close'] > last['EMA_50'] and last['EMA_50'] > last['EMA_200']
             cond2 = last['EMA_200'] > prev20['EMA_200'] 
             cond3 = last['Close'] > last['Open'] 
@@ -87,107 +82,6 @@ def main():
         except Exception as e:
             continue
             
-    # สรุปผลและส่งเข้า LINE
-    date_str = datetime.datetime.now().strftime("%Y-%m-%d")
-    if results:
-        msg = f"🔥 S&P 500 Trend Screener ({date_str})\n\n" + "\n".join(results)
-    else:
-        msg = f"📉 S&P 500 Trend Screener ({date_str})\n\nไม่มีหุ้นเข้าเกณฑ์ Strict Mode ในวันนี้"
-        
-    send_line_message(msg)
-    print("Done!")
-
-if __name__ == "__main__":
-    main()    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-    html_data = requests.get(url, headers=headers).text
-    
-    table = pd.read_html(io.StringIO(html_data))
-    tickers = table[0]['Symbol'].str.replace('.', '-').tolist()
-    
-    # จำกัดจำนวนหุ้นเพื่อทดสอบความรวดเร็ว
-    tickers = tickers[:100] 
-    
-    print(f"Downloading data for {len(tickers)} tickers...")
-    data = yf.download(tickers, period="1y", group_by='ticker', threads=True, progress=False)
-    
-    results = []
-    
-    for ticker in tickers:
-        try:
-            df = data[ticker].copy()
-            df = df.dropna()
-            if len(df) < 200: continue
-            
-            # คำนวณ Indicators
-            df.ta.ema(length=50, append=True)
-            df.ta.ema(length=200, append=True)
-            df.ta.sma(close="Volume", length=50, append=True)
-            df.ta.adx(length=14, append=True)
-            
-            last = df.iloc[-1]
-            prev20 = df.iloc[-21]
-            
-            # เช็คเงื่อนไข Strict Mode
-            cond1 = last['Close'] > last['EMA_50'] and last['EMA_50'] > last['EMA_200']
-            cond2 = last['EMA_200'] > prev20['EMA_200'] 
-            cond3 = last['Close'] > last['Open'] 
-            cond4 = last['Volume'] > (last['SMA_50'] * 1.5) 
-            cond5 = last['ADX_14'] > 25 and last['DMP_14'] > last['DMN_14'] 
-            
-            if cond1 and cond2 and cond3 and cond4 and cond5:
-                results.append(f"🟢 {ticker} | Price: ${last['Close']:.2f}")
-                
-        except Exception as e:
-            continue
-            
-    # สรุปผลและส่งเข้า LINE
-    date_str = datetime.datetime.now().strftime("%Y-%m-%d")
-    if results:
-        msg = f"🔥 S&P 500 Trend Screener ({date_str})\n\n" + "\n".join(results)
-    else:
-        msg = f"📉 S&P 500 Trend Screener ({date_str})\n\nไม่มีหุ้นเข้าเกณฑ์ Strict Mode ในวันนี้"
-        
-    send_line_message(msg)
-    print("Done!")
-
-if __name__ == "__main__":
-    main()    # จำกัดจำนวนหุ้นเพื่อความรวดเร็วในการสแกน
-    tickers = tickers[:100] 
-    
-    print(f"Downloading data for {len(tickers)} tickers...")
-    data = yf.download(tickers, period="1y", group_by='ticker', threads=True, progress=False)
-    
-    results = []
-    
-    for ticker in tickers:
-        try:
-            df = data[ticker].copy()
-            df = df.dropna()
-            if len(df) < 200: continue
-            
-            # คำนวณ Indicators
-            df.ta.ema(length=50, append=True)
-            df.ta.ema(length=200, append=True)
-            df.ta.sma(close="Volume", length=50, append=True)
-            df.ta.adx(length=14, append=True)
-            
-            last = df.iloc[-1]
-            prev20 = df.iloc[-21]
-            
-            # เช็คเงื่อนไข Strict Mode
-            cond1 = last['Close'] > last['EMA_50'] and last['EMA_50'] > last['EMA_200']
-            cond2 = last['EMA_200'] > prev20['EMA_200'] 
-            cond3 = last['Close'] > last['Open'] 
-            cond4 = last['Volume'] > (last['SMA_50'] * 1.5) 
-            cond5 = last['ADX_14'] > 25 and last['DMP_14'] > last['DMN_14'] 
-            
-            if cond1 and cond2 and cond3 and cond4 and cond5:
-                results.append(f"🟢 {ticker} | Price: ${last['Close']:.2f}")
-                
-        except Exception as e:
-            continue
-            
-    # สรุปผลและส่งเข้า LINE
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     if results:
         msg = f"🔥 S&P 500 Trend Screener ({date_str})\n\n" + "\n".join(results)
