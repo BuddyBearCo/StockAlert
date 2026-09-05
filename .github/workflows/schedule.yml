@@ -2,19 +2,18 @@ name: Daily Trend Screener
 
 on:
   schedule:
-    # ตั้งเวลาทำงาน: 21:30 UTC วันจันทร์-ศุกร์ (ตรงกับ 04:30 น. เวลาไทย)
     - cron: '30 21 * * 1-5'
-  workflow_dispatch: # เปิดให้เรากดปุ่มสั่งรันเองได้ตลอดเวลาเพื่อทดสอบ
+  workflow_dispatch: 
 
 jobs:
   run-screener:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
