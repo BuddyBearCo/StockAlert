@@ -6,7 +6,7 @@ import os
 import datetime
 import io
 
-def send_line_message(messages_list):
+def send_line_message(message):
     token = os.environ.get("LINE_TOKEN")
     user_id = os.environ.get("LINE_USER_ID")
     
@@ -19,11 +19,9 @@ def send_line_message(messages_list):
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}"
     }
-    
-    # ส่งข้อความแบบ Array (ส่งได้สูงสุด 5 บอลลูนพร้อมกัน)
     payload = {
         "to": user_id,
-        "messages": messages_list[:5]
+        "messages": [{"type": "text", "text": message}]
     }
     
     response = requests.post(url, headers=headers, json=payload)
@@ -43,58 +41,65 @@ def main():
         table = pd.read_html(io.StringIO(html_data))
         tickers = table[0]['Symbol'].str.replace('.', '-').tolist()
     except Exception as e:
-        print(f"Warning: Could not fetch from Wikipedia ({e}), using backup list.")
-        tickers = ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'BRK-B', 'LLY', 'AVGO', 'JPM', 'XOM', 'TSLA', 'UNH', 'V', 'PG', 'MA', 'HD', 'COST', 'JNJ', 'NFLX']
+        print(f"Warning: Could not fetch from Wikipedia.")
+        tickers = ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'BRK-B', 'LLY', 'AVGO', 'JPM']
 
-    # ดึงข้อมูลทั้งหมด
-    print(f"Downloading data for all {len(tickers)} tickers...")
+    print(f"Downloading data for {len(tickers)} tickers...")
     data = yf.download(tickers, period="1y", group_by='ticker', threads=True, progress=False)
     
-    results = []
+    passed_stocks = []
     
     for ticker in tickers:
         try:
             if ticker not in data: continue
             df = data[ticker].copy()
-                
             df = df.dropna()
             if len(df) < 200: continue
             
+            # คำนวณ Indicators
+            df.ta.ema(length=20, append=True)
             df.ta.ema(length=50, append=True)
             df.ta.ema(length=200, append=True)
+            df.ta.adx(length=14, append=True)
             
             last = df.iloc[-1]
             
-            # ใช้เกณฑ์ Uptrend พื้นฐานตามที่คุณต้องการ
-            cond_uptrend = last['Close'] > last['EMA_50'] and last['EMA_50'] > last['EMA_200']
+            # เกณฑ์ที่ 1: Perfect Uptrend Alignment (เรียงตัวขาขึ้นสมบูรณ์)
+            cond_trend = (last['Close'] > last['EMA_20']) and (last['EMA_20'] > last['EMA_50']) and (last['EMA_50'] > last['EMA_200'])
             
-            if cond_uptrend:
-                results.append(f"🟢 {ticker} | Price: ${last['Close']:.2f}")
+            # เกณฑ์ที่ 2: Trend Strength (ADX > 25 แสดงว่าเทรนด์มีพลัง)
+            cond_adx = last['ADX_14'] > 25 and last['DMP_14'] > last['DMN_14']
+            
+            if cond_trend and cond_adx:
+                # เก็บข้อมูลหุ้นที่ผ่านเกณฑ์ลงใน List พร้อมค่า ADX ไว้สำหรับจัดอันดับ
+                passed_stocks.append({
+                    'ticker': ticker,
+                    'price': last['Close'],
+                    'adx': last['ADX_14']
+                })
                 
         except Exception as e:
             continue
             
-    # สรุปผลและแบ่งข้อความเพื่อหลบข้อจำกัด 5,000 ตัวอักษรของ LINE
+    # นำหุ้นที่ผ่านเกณฑ์มาเรียงลำดับตามค่า ADX จากมากไปน้อย (Ranking)
+    # แล้วตัดมาแค่ 15 ตัวแรก (Top 15) เพื่อไม่ให้เยอะเกินไป
+    top_stocks = sorted(passed_stocks, key=lambda x: x['adx'], reverse=True)[:15]
+    
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     
-    if results:
-        messages = []
-        chunk_size = 50  # แบ่งหุ้นออกเป็นกลุ่มละ 50 ตัวต่อ 1 บอลลูนแชท
+    if top_stocks:
+        # จัดรูปแบบข้อความ
+        results_text = [f"🟢 {s['ticker']} | P: ${s['price']:.2f} | ADX: {s['adx']:.1f}" for s in top_stocks]
+        msg = f"🏆 Top 15 Strongest Trend\n({date_str})\n\n" + "\n".join(results_text)
         
-        for i in range(0, len(results), chunk_size):
-            chunk = results[i:i+chunk_size]
-            text = "\n".join(chunk)
+        # แนบข้อมูลบอกด้วยว่าคัดมาจากหุ้นขาขึ้นทั้งหมดกี่ตัว
+        if len(passed_stocks) > 15:
+            msg += f"\n\n*(คัดกรองจากหุ้นขาขึ้นทั้งหมด {len(passed_stocks)} ตัว)*"
             
-            # ใส่ส่วนหัวเฉพาะข้อความกล่องแรก
-            if i == 0:
-                text = f"📊 S&P 500 Uptrend Screener ({date_str})\n(พบหุ้นขาขึ้น {len(results)} ตัว)\n\n" + text
-                
-            messages.append({"type": "text", "text": text})
-            
-        send_line_message(messages)
+        send_line_message(msg)
     else:
-        msg = f"📉 S&P 500 Screener ({date_str})\n\nไม่มีหุ้นเข้าเกณฑ์ Uptrend ในวันนี้"
-        send_line_message([{"type": "text", "text": msg}])
+        msg = f"📉 S&P 500 Screener ({date_str})\n\nไม่มีหุ้นเข้าเกณฑ์ Strong Trend ในวันนี้"
+        send_line_message(msg)
         
     print("Done!")
 
