@@ -27,23 +27,24 @@ def send_line_message(message):
         print(f"Error sending broadcast: {response.status_code} - {response.text}")
 
 def main():
-    print("Fetching SET100 tickers...")
-    # รายชื่อหุ้นใหญ่ในไทย 100 ตัว (SET100)
-    set100_symbols = [
+    print("Fetching SET & MAI tickers...")
+    
+    # ตัวอย่างรายชื่อหุ้นสภาพคล่องดีครอบคลุมทั้ง SET และ MAI 
+    # (คุณสามารถเพิ่มรายชื่อหุ้นอื่นๆ เข้ามาใน List นี้ได้ตามต้องการ)
+    symbols = [
         "ADVANC", "AMATA", "AOT", "AP", "AWC", "BAM", "BANPU", "BBL", "BCH", "BCP", 
-        "BCPG", "BDMS", "BEM", "BGRIM", "BH", "BJC", "BLA", "BTS", "CBG", "CENTEL", 
-        "CHG", "CK", "CKP", "COM7", "CPALL", "CPAXT", "CPF", "CPN", "CRC", "DELTA", 
-        "EA", "EGCO", "EPG", "ERW", "FORTH", "GLOBAL", "GPSC", "GULF", "HANA", "HMPRO", 
-        "ICHI", "INTUCH", "IRPC", "IVL", "JAS", "JMART", "JMT", "KBANK", "KCE", "KEX", 
-        "KKP", "KTB", "KTC", "LH", "MEGA", "MINT", "MTC", "OR", "ORI", "OSP", 
-        "PLANB", "PRM", "PSH", "PSL", "PTG", "PTT", "PTTEP", "PTTGC", "QH", "RATCH", 
-        "RCL", "RS", "SAWAD", "SCB", "SCC", "SCCC", "SCGP", "SIRI", "SPALI", "SPRC", 
-        "STA", "STEC", "SUPER", "TASCO", "TCAP", "THANI", "THCOM", "THG", "TISCO", "TKN", 
-        "TOP", "TRUE", "TTB", "TU", "VGI", "WHA"
+        "BDMS", "BEM", "BGRIM", "BH", "BJC", "BLA", "BTS", "CBG", "CENTEL", "CHG", 
+        "CK", "COM7", "CPALL", "CPAXT", "CPF", "CPN", "CRC", "DELTA", "EA", "EGCO", 
+        "FORTH", "GLOBAL", "GPSC", "GULF", "HANA", "HMPRO", "ICHI", "INTUCH", "IVL", 
+        "JMART", "JMT", "KBANK", "KCE", "KKP", "KTB", "KTC", "LH", "MEGA", "MINT", 
+        "MTC", "OR", "OSP", "PLANB", "PRM", "PTG", "PTT", "PTTEP", "PTTGC", "QH", 
+        "RATCH", "SAWAD", "SCB", "SCC", "SCGP", "SIRI", "SPALI", "SPRC", "STA", 
+        "TASCO", "TCAP", "TISCO", "TOP", "TRUE", "TTB", "TU", "WHA",
+        # หุ้นเด่นจากตลาด MAI
+        "COCOCO", "FORTH", "PSP", "TGE", "MASTER", "BELT", "SAFE", "SNP", "MEDEE"
     ]
     
-    # เติม .BK เพื่อให้ yfinance ดึงข้อมูลหุ้นไทยได้
-    tickers = [f"{sym}.BK" for sym in set100_symbols]
+    tickers = [f"{sym}.BK" for sym in symbols]
 
     print(f"Downloading data for {len(tickers)} tickers...")
     data = yf.download(tickers, period="1y", group_by='ticker', threads=True, progress=False)
@@ -67,38 +68,36 @@ def main():
             ema50 = last['EMA_50']
             ema200 = last['EMA_200']
             
-            # เกณฑ์: Perfect Uptrend Alignment
+            # 1. เงื่อนไขเทรนด์ขาขึ้น
             cond_trend = (close_price > ema20) and (ema20 > ema50) and (ema50 > ema200)
             
             if cond_trend:
-                # คำนวณความแรงของเทรนด์: ราคาวิ่งห่างจากเส้น EMA200 ไปแล้วกี่เปอร์เซ็นต์
+                # คำนวณแรงผลัก (% ห่างจาก EMA200)
                 pct_above_ema200 = ((close_price - ema200) / ema200) * 100
-                display_name = ticker.replace(".BK", "") # ลบ .BK ออกเวลาส่งเข้า LINE
                 
-                passed_stocks.append({
-                    'ticker': display_name,
-                    'price': close_price,
-                    'power': pct_above_ema200
-                })
+                # 2. กรองเฉพาะหุ้นที่มีแรงผลักอยู่ในช่วง 10% ถึง 30% เท่านั้น
+                if 10.0 <= pct_above_ema200 <= 30.0:
+                    display_name = ticker.replace(".BK", "")
+                    passed_stocks.append({
+                        'ticker': display_name,
+                        'price': close_price,
+                        'power': pct_above_ema200
+                    })
                 
         except Exception as e:
             continue
             
-    # เรียงลำดับตามพลังเทรนด์ (ความห่างจาก EMA200) จากมากไปน้อย เอาแค่ 15 อันดับแรก
+    # เรียงลำดับตามแรงผลักจากมากไปน้อย (เอาสูงสุดไม่เกิน 15 ตัว)
     top_stocks = sorted(passed_stocks, key=lambda x: x['power'], reverse=True)[:15]
     
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     
     if top_stocks:
         results_text = [f"🟢 {s['ticker']} | ฿{s['price']:.2f} | แรงผลัก: +{s['power']:.1f}%" for s in top_stocks]
-        msg = f"🇹🇭 Top 15 หุ้นไทยขาขึ้น (SET100)\n({date_str})\n\n" + "\n".join(results_text)
-        
-        if len(passed_stocks) > 15:
-            msg += f"\n\n*(คัดจากหุ้นขาขึ้นทั้งหมด {len(passed_stocks)} ตัว)*"
-            
+        msg = f"🇹🇭 หุ้น SET/MAI แรงผลัก 10-30%\n({date_str})\n\n" + "\n".join(results_text)
         send_line_message(msg)
     else:
-        msg = f"📉 สแกนหุ้นไทย ({date_str})\n\nไม่มีหุ้นเข้าเกณฑ์ Perfect Uptrend ในวันนี้"
+        msg = f"📉 สแกนหุ้นไทย (SET/MAI)\n({date_str})\n\nไม่มีหุ้นที่อยู่ในช่วงแรงผลัก 10-30% ในวันนี้"
         send_line_message(msg)
         
     print("Done!")
