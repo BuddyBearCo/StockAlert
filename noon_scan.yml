@@ -1,0 +1,33 @@
+name: SET100 Noon Scanner
+
+on:
+  schedule:
+    # เวลาใน GitHub เป็น UTC (ช้ากว่าไทย 7 ชั่วโมง)
+    # 0 5 = 05:00 UTC = 12:00 น. เวลาไทย
+    # 1-5 = วันจันทร์ ถึง วันศุกร์
+    - cron: '0 5 * * 1-5'
+  workflow_dispatch: # ปุ่มกดรันแบบแมนนวล
+
+jobs:
+  run-screener:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install yfinance pandas pandas-ta requests
+
+    - name: Run SET100 Screener
+      env:
+        LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+      # สั่งให้รันไฟล์หุ้นไทยที่เราเพิ่งสร้าง
+      run: python screener_set100.py
