@@ -85,7 +85,7 @@ def main():
     
     if top_stocks:
         results_text = [f"🟢 {s['ticker']} | P: ${s['price']:.2f} | ADX: {s['adx']:.1f}" for s in top_stocks]
-        msg = f"🏆 American Top 15 Strongest Trend\n({date_str})\n\n" + "\n".join(results_text)
+        msg = f"🇺🇸 American Top 15 Strongest Trend\n({date_str})\n\n" + "\n".join(results_text)
         
         if len(passed_stocks) > 15:
             msg += f"\n\n*(คัดจากหุ้นขาขึ้นทั้งหมด {len(passed_stocks)} ตัว)*"
