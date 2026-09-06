@@ -8,25 +8,29 @@ import io
 
 def send_line_message(message):
     token = os.environ.get("LINE_TOKEN")
-    user_id = os.environ.get("LINE_USER_ID")
+    user_ids_raw = os.environ.get("LINE_USER_ID")
     
-    if not token or not user_id:
+    if not token or not user_ids_raw:
         print("Missing LINE credentials")
         return
         
-    url = "https://api.line.me/v2/bot/message/push"
+    # แยก User ID ด้วยเครื่องหมายลูกน้ำ (,) สำหรับส่งหลายคน
+    user_ids = [uid.strip() for uid in user_ids_raw.split(',') if uid.strip()]
+    
+    # เปลี่ยนจาก /push เป็น /multicast
+    url = "https://api.line.me/v2/bot/message/multicast"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}"
     }
     payload = {
-        "to": user_id,
+        "to": user_ids,  # ส่งเป็น List ของ ID
         "messages": [{"type": "text", "text": message}]
     }
     
     response = requests.post(url, headers=headers, json=payload)
     if response.status_code == 200:
-        print("LINE message sent successfully.")
+        print(f"LINE message sent successfully to {len(user_ids)} users.")
     else:
         print(f"Error sending to LINE: {response.status_code} - {response.text}")
 
@@ -56,7 +60,6 @@ def main():
             df = df.dropna()
             if len(df) < 200: continue
             
-            # คำนวณ Indicators
             df.ta.ema(length=20, append=True)
             df.ta.ema(length=50, append=True)
             df.ta.ema(length=200, append=True)
@@ -64,14 +67,11 @@ def main():
             
             last = df.iloc[-1]
             
-            # เกณฑ์ที่ 1: Perfect Uptrend Alignment (เรียงตัวขาขึ้นสมบูรณ์)
+            # เกณฑ์ Perfect Uptrend + ADX > 25
             cond_trend = (last['Close'] > last['EMA_20']) and (last['EMA_20'] > last['EMA_50']) and (last['EMA_50'] > last['EMA_200'])
-            
-            # เกณฑ์ที่ 2: Trend Strength (ADX > 25 แสดงว่าเทรนด์มีพลัง)
             cond_adx = last['ADX_14'] > 25 and last['DMP_14'] > last['DMN_14']
             
             if cond_trend and cond_adx:
-                # เก็บข้อมูลหุ้นที่ผ่านเกณฑ์ลงใน List พร้อมค่า ADX ไว้สำหรับจัดอันดับ
                 passed_stocks.append({
                     'ticker': ticker,
                     'price': last['Close'],
@@ -81,20 +81,16 @@ def main():
         except Exception as e:
             continue
             
-    # นำหุ้นที่ผ่านเกณฑ์มาเรียงลำดับตามค่า ADX จากมากไปน้อย (Ranking)
-    # แล้วตัดมาแค่ 15 ตัวแรก (Top 15) เพื่อไม่ให้เยอะเกินไป
     top_stocks = sorted(passed_stocks, key=lambda x: x['adx'], reverse=True)[:15]
     
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
     
     if top_stocks:
-        # จัดรูปแบบข้อความ
         results_text = [f"🟢 {s['ticker']} | P: ${s['price']:.2f} | ADX: {s['adx']:.1f}" for s in top_stocks]
         msg = f"🏆 Top 15 Strongest Trend\n({date_str})\n\n" + "\n".join(results_text)
         
-        # แนบข้อมูลบอกด้วยว่าคัดมาจากหุ้นขาขึ้นทั้งหมดกี่ตัว
         if len(passed_stocks) > 15:
-            msg += f"\n\n*(คัดกรองจากหุ้นขาขึ้นทั้งหมด {len(passed_stocks)} ตัว)*"
+            msg += f"\n\n*(คัดจากหุ้นขาขึ้นทั้งหมด {len(passed_stocks)} ตัว)*"
             
         send_line_message(msg)
     else:
