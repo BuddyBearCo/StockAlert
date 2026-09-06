@@ -6,7 +6,7 @@ import os
 import datetime
 import io
 
-def send_line_message(message):
+def send_line_message(messages_list):
     token = os.environ.get("LINE_TOKEN")
     user_id = os.environ.get("LINE_USER_ID")
     
@@ -19,9 +19,11 @@ def send_line_message(message):
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}"
     }
+    
+    # ส่งข้อความแบบ Array (ส่งได้สูงสุด 5 บอลลูนพร้อมกัน)
     payload = {
         "to": user_id,
-        "messages": [{"type": "text", "text": message}]
+        "messages": messages_list[:5]
     }
     
     response = requests.post(url, headers=headers, json=payload)
@@ -44,7 +46,7 @@ def main():
         print(f"Warning: Could not fetch from Wikipedia ({e}), using backup list.")
         tickers = ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'BRK-B', 'LLY', 'AVGO', 'JPM', 'XOM', 'TSLA', 'UNH', 'V', 'PG', 'MA', 'HD', 'COST', 'JNJ', 'NFLX']
 
-    # ดึงครบทั้งหมด ~500 ตัว
+    # ดึงข้อมูลทั้งหมด
     print(f"Downloading data for all {len(tickers)} tickers...")
     data = yf.download(tickers, period="1y", group_by='ticker', threads=True, progress=False)
     
@@ -58,39 +60,42 @@ def main():
             df = df.dropna()
             if len(df) < 200: continue
             
-            # คำนวณ Indicators ครบชุด Strict Mode
             df.ta.ema(length=50, append=True)
             df.ta.ema(length=200, append=True)
-            df.ta.sma(close="Volume", length=50, append=True)
-            df.ta.adx(length=14, append=True)
             
             last = df.iloc[-1]
-            prev20 = df.iloc[-21]
             
-            # เงื่อนไข Strict Mode เต็มรูปแบบ
-            cond1 = last['Close'] > last['EMA_50'] and last['EMA_50'] > last['EMA_200']
-            cond2 = last['EMA_200'] > prev20['EMA_200'] 
-            cond3 = last['Close'] > last['Open'] 
-            cond4 = last['Volume'] > (last['SMA_50'] * 1.5) 
-            cond5 = last['ADX_14'] > 25 and last['DMP_14'] > last['DMN_14'] 
+            # ใช้เกณฑ์ Uptrend พื้นฐานตามที่คุณต้องการ
+            cond_uptrend = last['Close'] > last['EMA_50'] and last['EMA_50'] > last['EMA_200']
             
-            if cond1 and cond2 and cond3 and cond4 and cond5:
-                results.append(f"🟢 {ticker} | Price: ${last['Close']:.2f} | ADX: {last['ADX_14']:.1f}")
+            if cond_uptrend:
+                results.append(f"🟢 {ticker} | Price: ${last['Close']:.2f}")
                 
         except Exception as e:
             continue
             
-    # สรุปผลและส่งเข้า LINE
+    # สรุปผลและแบ่งข้อความเพื่อหลบข้อจำกัด 5,000 ตัวอักษรของ LINE
     date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    
     if results:
-        display_results = results[:30]
-        msg = f"🔥 S&P 500 Strict Screener ({date_str})\n(พบหุ้นเข้าเกณฑ์ {len(results)} ตัว)\n\n" + "\n".join(display_results)
-        if len(results) > 30:
-            msg += f"\n\n...และอื่นๆอีก {len(results) - 30} ตัว"
-    else:
-        msg = f"📉 S&P 500 Strict Screener ({date_str})\n\nไม่มีหุ้นเข้าเกณฑ์ Strict Mode ครบทุกข้อในวันนี้"
+        messages = []
+        chunk_size = 50  # แบ่งหุ้นออกเป็นกลุ่มละ 50 ตัวต่อ 1 บอลลูนแชท
         
-    send_line_message(msg)
+        for i in range(0, len(results), chunk_size):
+            chunk = results[i:i+chunk_size]
+            text = "\n".join(chunk)
+            
+            # ใส่ส่วนหัวเฉพาะข้อความกล่องแรก
+            if i == 0:
+                text = f"📊 S&P 500 Uptrend Screener ({date_str})\n(พบหุ้นขาขึ้น {len(results)} ตัว)\n\n" + text
+                
+            messages.append({"type": "text", "text": text})
+            
+        send_line_message(messages)
+    else:
+        msg = f"📉 S&P 500 Screener ({date_str})\n\nไม่มีหุ้นเข้าเกณฑ์ Uptrend ในวันนี้"
+        send_line_message([{"type": "text", "text": msg}])
+        
     print("Done!")
 
 if __name__ == "__main__":
