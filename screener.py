@@ -7,32 +7,30 @@ import datetime
 import io
 
 def send_line_message(message):
+    # ดึงมาแค่ Token อย่างเดียว ไม่ต้องใช้ USER_ID แล้ว
     token = os.environ.get("LINE_TOKEN")
-    user_ids_raw = os.environ.get("LINE_USER_ID")
     
-    if not token or not user_ids_raw:
+    if not token:
         print("Missing LINE credentials")
         return
         
-    # แยก User ID ด้วยเครื่องหมายลูกน้ำ (,) สำหรับส่งหลายคน
-    user_ids = [uid.strip() for uid in user_ids_raw.split(',') if uid.strip()]
-    
-    # เปลี่ยนจาก /push เป็น /multicast
-    url = "https://api.line.me/v2/bot/message/multicast"
+    # เปลี่ยน URL ปลายทางเป็นคำว่า broadcast
+    url = "https://api.line.me/v2/bot/message/broadcast"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}"
     }
+    
+    # Payload รอบนี้ไม่ต้องมีคำว่า "to" เพราะระบบจะส่งหาเพื่อนทุกคนให้อัตโนมัติ
     payload = {
-        "to": user_ids,  # ส่งเป็น List ของ ID
         "messages": [{"type": "text", "text": message}]
     }
     
     response = requests.post(url, headers=headers, json=payload)
     if response.status_code == 200:
-        print(f"LINE message sent successfully to {len(user_ids)} users.")
+        print("LINE broadcast sent successfully to all followers.")
     else:
-        print(f"Error sending to LINE: {response.status_code} - {response.text}")
+        print(f"Error sending broadcast: {response.status_code} - {response.text}")
 
 def main():
     print("Fetching S&P 500 tickers...")
