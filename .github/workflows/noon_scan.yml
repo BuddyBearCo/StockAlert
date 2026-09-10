@@ -1,29 +1,34 @@
-name: SET100 Noon Scanner
+name: SET MAI Momentum Scanner
 
 on:
   schedule:
+    # รันเวลา 12:00 น. ตามเวลาไทย (05:00 UTC) เฉพาะวันจันทร์ - ศุกร์
     - cron: '0 5 * * 1-5'
-  workflow_dispatch:
+    
+    # รันเวลา 16:00 น. ตามเวลาไทย (09:00 UTC) เฉพาะวันจันทร์ - ศุกร์
+    - cron: '0 9 * * 1-5'
+
+  workflow_dispatch: # อนุญาตให้กดปุ่มรันแบบ Manual ได้
 
 jobs:
-  run-screener:
+  run-bot:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
-    - name: Install Dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install yfinance pandas pandas-ta requests
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install yfinance pandas pandas-ta requests pytz
 
-    - name: Run SET100 Screener
-      env:
-        LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
-      run: python screener_set100.py
+      - name: Run Scanner Script
+        env:
+          LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+        run: python bot.py
