@@ -12,21 +12,20 @@ def send_line_message(message):
         print("Missing LINE credentials")
         return
         
-    # เปลี่ยน URL มาใช้ LINE Notify แทน Broadcast
-    url = "https://notify-api.line.me/api/notify"
+    url = "https://api.line.me/v2/bot/message/broadcast"
     headers = {
+        "Content-Type": "application/json",
         "Authorization": f"Bearer {token}"
     }
     payload = {
-        "message": message
+        "messages": [{"type": "text", "text": message}]
     }
     
-    # ส่งข้อมูลแบบ data แทน json
-    response = requests.post(url, headers=headers, data=payload)
+    response = requests.post(url, headers=headers, json=payload)
     if response.status_code == 200:
-        print("LINE Notify sent successfully.")
+        print("LINE broadcast sent successfully.")
     else:
-        print(f"Error sending Notify: {response.status_code} - {response.text}")
+        print(f"Error sending broadcast: {response.status_code} - {response.text}")
 
 def main():
     print("Loading tickers from tickers.txt")
