@@ -31,4 +31,4 @@ jobs:
       - name: Run Scanner Script
         env:
           LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
-        run: python bot.py
+        run: screener_set100.py
