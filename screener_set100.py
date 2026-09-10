@@ -4,7 +4,7 @@ import pandas_ta as ta
 import requests
 import os
 import datetime
-import pytz # เพิ่มไลบรารีจัดการเวลา
+import pytz
 
 def send_line_message(message):
     token = os.environ.get("LINE_TOKEN")
@@ -28,23 +28,24 @@ def send_line_message(message):
         print(f"Error sending broadcast: {response.status_code} - {response.text}")
 
 def main():
-    print("Fetching SET & MAI tickers...")
+    print("Loading tickers from tickers.txt...")
     
-    symbols = [
-        "ADVANC", "AMATA", "AOT", "AP", "AWC", "BAM", "BANPU", "BBL", "BCH", "BCP", 
-        "BDMS", "BEM", "BGRIM", "BH", "BJC", "BLA", "BTS", "CBG", "CENTEL", "CHG", 
-        "CK", "COM7", "CPALL", "CPAXT", "CPF", "CPN", "CRC", "DELTA", "EA", "EGCO", 
-        "FORTH", "GLOBAL", "GPSC", "GULF", "HANA", "HMPRO", "ICHI", "INTUCH", "IVL", 
-        "JMART", "JMT", "KBANK", "KCE", "KKP", "KTB", "KTC", "LH", "MEGA", "MINT", 
-        "MTC", "OR", "OSP", "PLANB", "PRM", "PTG", "PTT", "PTTEP", "PTTGC", "QH", 
-        "RATCH", "SAWAD", "SCB", "SCC", "SCGP", "SIRI", "SPALI", "SPRC", "STA", 
-        "TASCO", "TCAP", "TISCO", "TOP", "TRUE", "TTB", "TU", "WHA",
-        "COCOCO", "FORTH", "PSP", "TGE", "MASTER", "BELT", "SAFE", "SNP", "MEDEE"
-    ]
-    
+    # 1. คำสั่งให้อ่านรายชื่อหุ้นจากไฟล์ tickers.txt
+    try:
+        with open("Listed.rtf", "r") as file:
+            # อ่านทีละบรรทัด ลบช่องว่างทิ้ง และข้ามบรรทัดที่ว่างเปล่า
+            symbols = [line.strip() for line in file if line.strip()]
+    except FileNotFoundError:
+        print("Error: ไม่พบไฟล์ tickers.txt บน GitHub")
+        return
+
+    # 2. เติม .BK ต่อท้ายชื่อหุ้นทุกตัว เพื่อให้ระบบ yfinance ดึงข้อมูลหุ้นไทยได้
     tickers = [f"{sym}.BK" for sym in symbols]
 
-    print(f"Downloading data for {len(tickers)} tickers...")
+    print(f"Total tickers loaded: {len(tickers)} symbols")
+    print(f"Downloading data...")
+    
+    # ดึงข้อมูลหุ้นทั้งหมดพร้อมกัน
     data = yf.download(tickers, period="1y", group_by='ticker', threads=True, progress=False)
     
     passed_stocks = []
@@ -66,14 +67,14 @@ def main():
             ema50 = last['EMA_50']
             ema200 = last['EMA_200']
             
-            # 1. เงื่อนไขเทรนด์ขาขึ้น
+            # เงื่อนไขเทรนด์ขาขึ้น
             cond_trend = (close_price > ema20) and (ema20 > ema50) and (ema50 > ema200)
             
             if cond_trend:
                 # คำนวณแรงผลัก (% ห่างจาก EMA200)
                 pct_above_ema200 = ((close_price - ema200) / ema200) * 100
                 
-                # 2. กรองเฉพาะหุ้นที่มีแรงผลักอยู่ในช่วง 3% ถึง 12% เท่านั้น 
+                # กรองเฉพาะหุ้นที่มีแรงผลักอยู่ในช่วง 3% ถึง 12%
                 if 3.0 <= pct_above_ema200 <= 12.0:
                     display_name = ticker.replace(".BK", "")
                     passed_stocks.append({
@@ -85,13 +86,14 @@ def main():
         except Exception as e:
             continue
             
-    # เรียงลำดับตามแรงผลักจากมากไปน้อย (เอาสูงสุดไม่เกิน 20 ตัว)
-    top_stocks = sorted(passed_stocks, key=lambda x: x['power'], reverse=True)[:20]
+    # เรียงลำดับหุ้นที่เข้าเกณฑ์ โดยให้ตัวที่มีแรงผลักมากที่สุดอยู่ด้านบน (แสดงผลสูงสุด 15 ตัว)
+    top_stocks = sorted(passed_stocks, key=lambda x: x['power'], reverse=True)[:15]
     
-    # ปรับเวลาให้เป็นโซนเวลาประเทศไทยเสมอ (รองรับการรันบนเซิร์ฟเวอร์ GitHub ที่เป็น UTC)
+    # ตั้งค่าเวลาให้ตรงกับประเทศไทย
     tz = pytz.timezone('Asia/Bangkok')
     time_str = datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M")
     
+    # 3. จัดรูปแบบข้อความเพื่อส่งเข้า LINE
     if top_stocks:
         results_text = [f"🟢 {s['ticker']} | ฿{s['price']:.2f} | แรงผลัก: +{s['power']:.1f}%" for s in top_stocks]
         msg = f"🇹🇭 หุ้น SET/MAI แรงผลัก 3-12%\n({time_str})\n\n" + "\n".join(results_text)
