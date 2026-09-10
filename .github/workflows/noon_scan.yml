@@ -33,4 +33,4 @@ jobs:
           LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
         run: python screener_set100.py
       - name: Run Trend Following Scanner
-        run: python scan_trend_set.py  
+        run: python scan_trend_set
