@@ -21,16 +21,20 @@ def send_line_notification(message):
         print(f"Failed to send LINE notification: {response.text}")
 
 def load_tickers_from_file(filename="tickers.txt"):
-    """อ่านรายชื่อหุ้นจากไฟล์ tickers.txt"""
+    """อ่านรายชื่อหุ้นจากไฟล์ tickers.txt และเติม .BK อัตโนมัติ"""
     if not os.path.exists(filename):
         print(f"Error: File {filename} not found.")
         return []
     with open(filename, "r", encoding="utf-8") as f:
-        # สมมติว่าในไฟล์ใส่ชื่อหุ้นบรรทัดละตัว และเติม .BK ต่อท้ายสำหรับตลาดหุ้นไทย
-        tickers = [line.strip().upper() for line in f if line.strip()]
-    return tickers
-
-def scan_trend_following(tickers):
+        tickers = []
+        for line in f:
+            sym = line.strip().upper()
+            if sym:
+                # ถ้าในไฟล์ยังไม่มี .BK ต่อท้าย ให้เติมให้โดยอัตโนมัติ
+                if not sym.endswith(".BK"):
+                    sym = f"{sym}.BK"
+                tickers.append(sym)
+    return tickersdef scan_trend_following(tickers):
     """สแกนหาหุ้นตามเงื่อนไข Trend Following ต้นรอบ"""
     matched_stocks = []
     
