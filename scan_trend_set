@@ -1,101 +1,99 @@
 import os
+import datetime
+import pytz
+import requests
 import pandas as pd
 import yfinance as yf
-import requests
+import pandas_ta as ta
 
-# 1. ตั้งค่า LINE Token จาก Environment Variable ของ GitHub Actions
-LINE_TOKEN = os.getenv("LINE_TOKEN")
-
-def send_line_notification(message):
-    """ฟังก์ชันส่งข้อความเข้า LINE"""
-    if not LINE_TOKEN:
-        print("Error: LINE_TOKEN not found.")
+def send_line_message(message):
+    token = os.environ.get("LINE_TOKEN")
+    if not token:
+        print("Missing LINE credentials")
         return
-    url = "https://notify-api.line.me/api/notify"
-    headers = {"Authorization": f"Bearer {LINE_TOKEN}"}
-    payload = {"message": message}
-    response = requests.post(url, headers=headers, data=payload)
-    if response.status_code == 200:
-        print("LINE notification sent successfully.")
-    else:
-        print(f"Failed to send LINE notification: {response.text}")
-
-def load_tickers_from_file(filename="tickers.txt"):
-    """อ่านรายชื่อหุ้นจากไฟล์ tickers.txt และเติม .BK อัตโนมัติ"""
-    if not os.path.exists(filename):
-        print(f"Error: File {filename} not found.")
-        return []
-    with open(filename, "r", encoding="utf-8") as f:
-        tickers = []
-        for line in f:
-            sym = line.strip().upper()
-            if sym:
-                # ถ้าในไฟล์ยังไม่มี .BK ต่อท้าย ให้เติมให้โดยอัตโนมัติ
-                if not sym.endswith(".BK"):
-                    sym = f"{sym}.BK"
-                tickers.append(sym)
-    return tickersdef scan_trend_following(tickers):
-    """สแกนหาหุ้นตามเงื่อนไข Trend Following ต้นรอบ"""
-    matched_stocks = []
+        
+    url = "https://api.line.me/v2/bot/message/broadcast"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}"
+    }
+    payload = {
+        "messages": [{"type": "text", "text": message}]
+    }
     
-    print(f"Starting scan for {len(tickers)} stocks...")
+    response = requests.post(url, headers=headers, json=payload)
+    if response.status_code == 200:
+        print("LINE broadcast sent successfully.")
+    else:
+        print(f"Error sending broadcast: {response.status_code} - {response.text}")
+
+def main():
+    print("Loading tickers from tickers.txt")
+    
+    try:
+        with open("tickers.txt", "r") as file:
+            symbols = [line.strip() for line in file if line.strip()]
+    except FileNotFoundError:
+        print("Error: ไม่พบไฟล์ tickers.txt บน GitHub")
+        return
+
+    tickers = [f"{sym}.BK" for sym in symbols]
+
+    print(f"Total tickers loaded: {len(tickers)} symbols")
+    print(f"Downloading data...")
+    
+    data = yf.download(tickers, period="1y", group_by='ticker', threads=True, progress=False)
+    passed_stocks = []
     
     for ticker in tickers:
         try:
-            # ดึงข้อมูลย้อนหลัง 1 ปี เพื่อให้เส้น EMA 200 คำนวณได้แม่นยำ
-            df = yf.download(ticker, period="1y", interval="1d", progress=False)
-            
-            # ตรวจสอบว่าข้อมูลเพียงพอไหม (อย่างน้อยต้องเกิน 200 วันทำการ)
-            if df.empty or len(df) < 200:
+            if ticker not in data: 
                 continue
+            df = data[ticker].copy()
+            df = df.dropna()
+            if len(df) < 200: 
+                continue
+              
+            df.ta.ema(length=20, append=True)
+            df.ta.ema(length=50, append=True)
+            df.ta.ema(length=200, append=True)
+              
+            last = df.iloc[-1]
+            close_price = last['Close']
+            ema20 = last['EMA_20']
+            ema50 = last['EMA_50']
+            ema200 = last['EMA_200']
+              
+            cond_trend = (close_price > ema20) and (ema20 > ema50) and (ema50 > ema200)
+              
+            if cond_trend:
+                pct_above_ema200 = ((close_price - ema200) / ema200) * 100
                 
-            # แก้ไขโครงสร้าง MultiIndex ของ yfinance หากมี
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
-                
-            # คำนวณเส้นค่าเฉลี่ยและ Volume Average
-            df["EMA_50"] = df["Close"].ewm(span=50).mean()
-            df["EMA_200"] = df["Close"].ewm(span=200).mean()
-            df["Vol_SMA20"] = df["Volume"].rolling(20).mean()
-            
-            # ดึงค่าของวันล่าสุด (-1) มาตรวจสอบเงื่อนไข
-            close = df["Close"].iloc[-1]
-            ema_50 = df["EMA_50"].iloc[-1]
-            ema_200 = df["EMA_200"].iloc[-1]
-            volume = df["Volume"].iloc[-1]
-            vol_sma20 = df["Vol_SMA20"].iloc[-1]
-            
-            # เงื่อนไข Trend Following ต้นรอบ:
-            # 1. ราคาอยู่เหนือเส้น EMA 50 และ EMA 50 อยู่เหนือ EMA 200 (โครงสร้างขาขึ้น)
-            # 2.ราคาย่อตัวลงมาอยู่ใกล้เส้น EMA 50 (ไม่ต่ำกว่าเส้นเกิน 2% หรืออยู่เหนือไม่เกินเส้นเล็กน้อย)
-            # 3. ปริมาณการซื้อขายวันล่าสุดพุ่งสูงกว่าค่าเฉลี่ย 20 วันอย่างน้อย 1.5 เท่า
-            is_uptrend = (close > ema_50) and (ema_50 > ema_200)
-            is_near_support = (close >= ema_50 * 0.98) and (close <= ema_50 * 1.05)
-            is_volume_surge = volume > (vol_sma20 * 1.5)
-            
-            if is_uptrend and is_near_support and is_volume_surge:
-                matched_stocks.append(ticker)
-                print(f"[MATCH] {ticker} -> Close: {close:.2f}, EMA50: {ema_50:.2f}")
-                
+                if 3.0 <= pct_above_ema200 <= 12.0:
+                    display_name = ticker.replace(".BK", "")
+                    passed_stocks.append({
+                        'ticker': display_name,
+                        'price': close_price,
+                        'power': pct_above_ema200
+                    })
+              
         except Exception as e:
-            print(f"Error processing {ticker}: {e}")
+            continue
             
-    return matched_stocks
+    top_stocks = sorted(passed_stocks, key=lambda x: x['power'], reverse=True)[:15]
+    
+    tz = pytz.timezone('Asia/Bangkok')
+    time_str = datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M")
+    
+    if top_stocks:
+        results_text = [f"🟢 {s['ticker']} | ฿{s['price']:.2f} | แรงผลัก: +{s['power']:.1f}%" for s in top_stocks]
+        msg = f"🇹🇭 หุ้น SET/MAI แรงผลัก 3-12%\n({time_str})\n\n" + "\n".join(results_text)
+        send_line_message(msg)
+    else:
+        msg = f"📉 สแกนหุ้นไทย (SET/MAI)\n({time_str})\n\nไม่มีหุ้นเข้าเกณฑ์แรงผลัก 3-12% ในรอบนี้"
+        send_line_message(msg)
+        
+    print("Done!")
 
 if __name__ == "__main__":
-    # โหลดรายชื่อหุ้น
-    tickers_list = load_tickers_from_file("tickers.txt")
-    
-    if tickers_list:
-        # รันระบบสแกน
-        results = scan_trend_following(tickers_list)
-        
-        # ส่งผลลัพธ์เข้า LINE Notify
-        if results:
-            msg = f"\n[Trend Following Alert]\nพบหุ้นเข้าเงื่อนไขต้นรอบ:\n" + ", ".join(results)
-        else:
-            msg = f"\n[Trend Following Alert]\nรอบนี้ยังไม่มีหุ้นตัวใดเข้าเงื่อนไข Trend Following ครับ"
-            
-        send_line_notification(msg)
-    else:
-        print("No tickers found to scan.")
+    main()
