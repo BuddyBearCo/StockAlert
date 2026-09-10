@@ -28,15 +28,15 @@ def send_line_message(message):
         print(f"Error sending broadcast: {response.status_code} - {response.text}")
 
 def main():
-    print("Loading tickers from Listed.rtf...")
+    print("Loading tickers from tickers.txt")
     
-    # 1. คำสั่งให้อ่านรายชื่อหุ้นจากไฟล์ Listed.rtf
+    # 1. คำสั่งให้อ่านรายชื่อหุ้นจากไฟล์ tickers.txt
     try:
-        with open("Listed.rtf", "r") as file:
+        with open("tickers.txt", "r") as file:
             # อ่านทีละบรรทัด ลบช่องว่างทิ้ง และข้ามบรรทัดที่ว่างเปล่า
             symbols = [line.strip() for line in file if line.strip()]
     except FileNotFoundError:
-        print("Error: ไม่พบไฟล์ Listed.rtf บน GitHub")
+        print("Error: ไม่พบไฟล์ tickers.txt บน GitHub")
         return
 
     # 2. เติม .BK ต่อท้ายชื่อหุ้นทุกตัว เพื่อให้ระบบ yfinance ดึงข้อมูลหุ้นไทยได้
