@@ -31,3 +31,5 @@ jobs:
 
       - name: Run Trend Following Scanner
         run: python scan_trend_set
+        env:
+    LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
