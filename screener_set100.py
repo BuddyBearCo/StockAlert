@@ -4,6 +4,7 @@ import pandas_ta as ta
 import requests
 import os
 import datetime
+import pytz # เพิ่มไลบรารีจัดการเวลา
 
 def send_line_message(message):
     token = os.environ.get("LINE_TOKEN")
@@ -29,8 +30,6 @@ def send_line_message(message):
 def main():
     print("Fetching SET & MAI tickers...")
     
-    # ตัวอย่างรายชื่อหุ้นสภาพคล่องดีครอบคลุมทั้ง SET และ MAI 
-    # (คุณสามารถเพิ่มรายชื่อหุ้นอื่นๆ เข้ามาใน List นี้ได้ตามต้องการ)
     symbols = [
         "ADVANC", "AMATA", "AOT", "AP", "AWC", "BAM", "BANPU", "BBL", "BCH", "BCP", 
         "BDMS", "BEM", "BGRIM", "BH", "BJC", "BLA", "BTS", "CBG", "CENTEL", "CHG", 
@@ -40,7 +39,6 @@ def main():
         "MTC", "OR", "OSP", "PLANB", "PRM", "PTG", "PTT", "PTTEP", "PTTGC", "QH", 
         "RATCH", "SAWAD", "SCB", "SCC", "SCGP", "SIRI", "SPALI", "SPRC", "STA", 
         "TASCO", "TCAP", "TISCO", "TOP", "TRUE", "TTB", "TU", "WHA",
-        # หุ้นเด่นจากตลาด MAI
         "COCOCO", "FORTH", "PSP", "TGE", "MASTER", "BELT", "SAFE", "SNP", "MEDEE"
     ]
     
@@ -75,8 +73,8 @@ def main():
                 # คำนวณแรงผลัก (% ห่างจาก EMA200)
                 pct_above_ema200 = ((close_price - ema200) / ema200) * 100
                 
-                # 2. กรองเฉพาะหุ้นที่มีแรงผลักอยู่ในช่วง 10% ถึง 30% เท่านั้น
-                if 10.0 <= pct_above_ema200 <= 30.0:
+                # 2. กรองเฉพาะหุ้นที่มีแรงผลักอยู่ในช่วง 3% ถึง 12% เท่านั้น 
+                if 3.0 <= pct_above_ema200 <= 12.0:
                     display_name = ticker.replace(".BK", "")
                     passed_stocks.append({
                         'ticker': display_name,
@@ -87,17 +85,19 @@ def main():
         except Exception as e:
             continue
             
-    # เรียงลำดับตามแรงผลักจากมากไปน้อย (เอาสูงสุดไม่เกิน 15 ตัว)
-    top_stocks = sorted(passed_stocks, key=lambda x: x['power'], reverse=True)[:15]
+    # เรียงลำดับตามแรงผลักจากมากไปน้อย (เอาสูงสุดไม่เกิน 20 ตัว)
+    top_stocks = sorted(passed_stocks, key=lambda x: x['power'], reverse=True)[:20]
     
-    date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    # ปรับเวลาให้เป็นโซนเวลาประเทศไทยเสมอ (รองรับการรันบนเซิร์ฟเวอร์ GitHub ที่เป็น UTC)
+    tz = pytz.timezone('Asia/Bangkok')
+    time_str = datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M")
     
     if top_stocks:
         results_text = [f"🟢 {s['ticker']} | ฿{s['price']:.2f} | แรงผลัก: +{s['power']:.1f}%" for s in top_stocks]
-        msg = f"🇹🇭 หุ้น SET/MAI แรงผลัก 10-30%\n({date_str})\n\n" + "\n".join(results_text)
+        msg = f"🇹🇭 หุ้น SET/MAI แรงผลัก 3-12%\n({time_str})\n\n" + "\n".join(results_text)
         send_line_message(msg)
     else:
-        msg = f"📉 สแกนหุ้นไทย (SET/MAI)\n({date_str})\n\nไม่มีหุ้นที่อยู่ในช่วงแรงผลัก 10-30% ในวันนี้"
+        msg = f"📉 สแกนหุ้นไทย (SET/MAI)\n({time_str})\n\nไม่มีหุ้นเข้าเกณฑ์แรงผลัก 3-12% ในรอบนี้"
         send_line_message(msg)
         
     print("Done!")
