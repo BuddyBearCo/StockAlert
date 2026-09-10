@@ -27,11 +27,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install yfinance pandas pandas-ta requests pytz
-
-      - name: Run Scanner Script
-        env:
-          LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
-        run: python screener_set100.py
         
       - name: Run Trend Following Scanner
         env:
